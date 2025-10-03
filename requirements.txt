@@ -1,0 +1,11 @@
+
+numpy
+qdrant-client
+sentence-transformers
+transformers
+torch
+tree-sitter
+pefile
+yara-python
+requests
+scikit-learn
