@@ -37,7 +37,7 @@ TEXT_EMBEDDING_DIM = 1024
 # The URL endpoint for the Ollama server's chat API. Our Python code will send requests to this address.
 OLLAMA_URL = "http://localhost:11434/api/chat"
 # The specific name of the model we want to use from Ollama.
-LLM_MODEL = "dolphin3:latest"
+LLM_MODEL = "llama3:latest"
 # This sets the maximum "context size" for the LLM, which is the amount of text (in tokens) it can consider at once.
 # A larger context allows for more detailed prompts and analysis.
 LLM_CONTEXT_SIZE = 32768
