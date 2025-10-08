@@ -1,84 +1,96 @@
-# Malware RAG Analysis System
+# Malware RAG Analysis and Red Team System
 
-This project is a sophisticated malware analysis system that leverages Retrieval-Augmented Generation (RAG) to provide deep, context-aware analysis of suspicious code. By combining a vast database of known malware samples with the analytical power of large language models (LLMs), this system can identify threats, explain their functionality, and generate detection rules.
+This project is a sophisticated malware analysis system that leverages Retrieval-Augmented Generation (RAG) to provide deep, context-aware analysis of suspicious code. It also includes a "Red Team" mode for interactive, adversarial brainstorming with an LLM.
 
 ## Key Features
 
-*   **Hybrid Search:** Utilizes a combination of dense vector search and sparse keyword search to find the most relevant malware samples from the database.
-*   **RAG-Powered Analysis:** Enriches the analysis by providing the LLM with context from similar malware samples, enabling more accurate and detailed reports.
-*   **Comprehensive Reporting:** Generates in-depth analysis reports that include an executive summary, behavioral analysis, MITRE ATT&CK mapping, indicators of compromise (IOCs), and YARA detection rules.
-*   **Automatic YARA Rule Generation:** Creates YARA rules based on common patterns identified in clusters of similar malware samples.
-*   **Modular Architecture:** The system is divided into distinct modules for ingestion, retrieval, and analysis, making it easy to extend and maintain.
-*   **Efficient Ingestion:** A flexible data ingestion pipeline that can process a variety of file types, including source code, binary files, and documents.
+*   **RAG-Powered Malware Analysis:** Enriches LLM analysis by providing context from a database of known malware samples.
+*   **Comprehensive Reporting:** Generates in-depth reports including behavioral analysis, MITRE ATT&CK mapping, and IOCs.
+*   **Interactive Red Team Mode:** An interactive chat mode that allows for adversarial brainstorming of novel offensive security techniques with an LLM.
+*   **Dockerized Vector DB:** Uses Qdrant running in a Docker container for robust and persistent vector storage.
+*   **Modular Architecture:** The system is divided into distinct modules for ingestion, retrieval, and analysis.
 
 ## Project Structure
 
 The project is organized into the following directories:
 
-*   `analysis`: Contains the logic for analyzing suspicious code, including the query router, YARA generator, and LLM analyzer.
-*   `ingestion`: Handles the ingestion of malware samples into the vector database, including data loading and preprocessing.
-*   `retrieval`: Implements the search functionality for finding similar malware samples in the vector database.
-*   `utils`: Provides helper functions and utility scripts used throughout the project.
+*   `analysis`: Contains the logic for analyzing suspicious code and the new Red Team chat mode.
+*   `ingestion`: Handles the ingestion of malware samples into the vector database.
+*   `retrieval`: Implements the search functionality for finding similar malware samples.
+*   `utils`: Provides helper functions and utility scripts.
+*   `qdrant_storage`: This directory is mounted into the Qdrant Docker container to persist the vector database on your local disk.
 
-## Getting Started
+## Setup Instructions
 
-### Prerequisites
+### 1. Prerequisites
 
 *   Python 3.8+
-*   [Poetry](https://python-poetry.org/) for dependency management
-*   Access to a running [Ollama](https://ollama.ai/) instance with a suitable model (e.g., `dolphin3:8b`)
+*   Docker and Docker Compose
+*   Access to a running [Ollama](https://ollama.ai/) instance with a suitable model (e.g., `dolphin3:latest`).
 
-### Setup Instructions
+### 2. Clone the Repository
 
-1.  **Clone the repository:**
+```bash
+git clone https://github.com/your-username/malware-rag-project.git
+cd malware-rag-project
+```
 
-    ```bash
-    git clone https://github.com/your-username/malware-rag-project.git
-    cd malware-rag-project
-    ```
+### 3. Install Dependencies
 
-2.  **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 4. Run the Vector Database (Qdrant)
 
-3.  **Download the malware dataset:**
+This command starts a Qdrant container, maps the necessary ports, and mounts the `qdrant_storage` directory to persist data.
 
-    This project is designed to work with the [VX-Underground](https://vx-underground.org/datasets.html) malware dataset. Download the dataset and place it in a directory accessible to the project.
+```bash
+docker run -p 6333:6333 -p 6334:6334 \
+    -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+    qdrant/qdrant
+```
 
-4.  **Configure the project:**
+You can verify that Qdrant is running by opening the web UI at [http://localhost:6333/dashboard](http://localhost:6333/dashboard).
 
-    Update the `config.py` file with the appropriate paths and settings for your environment.
+### 5. Configure the Project
 
-5.  **Ingest the malware data:**
-
-    Run the following command to ingest the malware samples into the vector database. This may take a significant amount of time depending on the size of the dataset.
-
-    ```bash
-    python main.py --ingest --repo-path /path/to/vx-underground
-    ```
-
-6.  **Analyze a suspicious file:**
-
-    Once the ingestion is complete, you can analyze a suspicious file using the following command:
-
-    ```bash
-    python main.py --analyze /path/to/suspicious_file.py
-    ```
+Review the `config.py` file. The default settings should work if you are running Qdrant and Ollama locally on their default ports.
 
 ## Usage
 
-The `main.py` script provides two main functions:
+The `main.py` script provides three modes of operation.
 
-*   `--ingest`: Ingests the malware dataset into the vector database.
-*   `--analyze`: Analyzes a suspicious file and generates a report.
+### Ingest Mode
 
-For more information on the available options, run:
+Ingest malware samples into the vector database. This must be done before you can run an analysis.
 
 ```bash
-python main.py --help
+# Ingest from the default path with a limit of 5000 files
+python main.py --mode ingest --max-files 5000
+
+# Ingest from a custom repository path
+python main.py --mode ingest --repo-path /path/to/your/malware/dataset
 ```
+
+### Analyze Mode
+
+Analyze a suspicious file and generate a full report.
+
+```bash
+python main.py --mode analyze --file /path/to/your/suspicious_file.c
+```
+
+### Red Team Mode
+
+Start an interactive chat session with the LLM in a "Red Team" persona for adversarial brainstorming.
+
+```bash
+python main.py --mode redteam
+```
+Inside the chat, type `exit` or `quit` to end the session.
+
+---
 
 ## Contributing
 

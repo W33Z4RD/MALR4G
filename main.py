@@ -24,6 +24,7 @@ from ingestion.vector_db import VectorDB # Manages the vector database connectio
 from ingestion.data_loader import ingest_vx_repository # Handles the data ingestion process.
 from retrieval.search import MalwareSearch # Performs the search for similar malware.
 from analysis.orchestrator import ComprehensiveMalwareAnalyzer # Orchestrates the analysis workflow.
+from analysis.redteam_chat import redteam_chat_session # The new red team chat mode.
 
 # --- Main Function ---
 # The `main` function contains the primary logic of the script.
@@ -32,40 +33,31 @@ def main():
     # Here, we set up the command-line arguments that the user can provide.
 
     # Create a parser object. The description is shown when the user runs the script with `--help`.
-    parser = argparse.ArgumentParser(description="Malware RAG Analysis System")
+    parser = argparse.ArgumentParser(description="Malware RAG Analysis and Red Team System")
 
-    # Add the `--ingest` argument. `action='store_true'` makes it a flag; if it's present, `args.ingest` will be True.
-    parser.add_argument('--ingest', action='store_true', help="Run the ingestion pipeline.")
+    # Add the `--mode` argument to switch between application functionalities.
+    parser.add_argument('--mode', type=str, default='analyze', choices=['ingest', 'analyze', 'redteam'], 
+                        help="The mode to run the application in. 'ingest', 'analyze', or 'redteam'.")
 
-    # Add the `--repo-path` argument. `type=str` means it expects a string value.
-    # `default` provides a value if the user doesn't specify one.
-    parser.add_argument('--repo-path', type=str, default="/mnt/data/vx-underground", help="Path to the VX-Underground repository.")
+    # Arguments for 'ingest' mode
+    parser.add_argument('--repo-path', type=str, default="/mnt/data/vx-underground", 
+                        help="Path to the VX-Underground repository for ingestion.")
+    parser.add_argument('--max-files', type=int, default=None, 
+                        help="Maximum number of files to ingest.")
 
-    # Add the `--max-files` argument. `type=int` expects an integer.
-    parser.add_argument('--max-files', type=int, default=None, help="Maximum number of files to ingest.")
-
-    # Add the `--analyze` argument. It expects a string (the file path to analyze).
-    parser.add_argument('--analyze', type=str, help="Path to a file containing suspicious code to analyze.")
+    # Argument for 'analyze' mode
+    parser.add_argument('--file', type=str, help="Path to a file containing suspicious code to analyze.")
     
     # This line actually parses the arguments provided by the user when they ran the script.
     # The results are stored in the `args` object.
     args = parser.parse_args()
 
-    # --- Component Initialization ---
-    # These components are needed for both ingestion and analysis.
-
-    # The `print()` function displays text in the console. It's useful for showing progress and status.
-    print("[*] Initializing components...")
-    db = VectorDB()
-    
     # --- Main Logic Branching ---
-    # The script now decides what to do based on the user's command-line arguments.
+    # The script now decides what to do based on the user's selected mode.
 
-    # `if/elif/else` is a standard way to control the flow of a program in Python.
-    # This block checks if the `--ingest` flag was used.
-    if args.ingest:
+    if args.mode == 'ingest':
         print("[*] Starting ingestion process...")
-        # Call the ingestion function with the necessary arguments from the command line and the db object.
+        db = VectorDB()
         ingest_vx_repository(
             repo_path=args.repo_path,
             db=db,
@@ -73,62 +65,42 @@ def main():
         )
         print("[+] Ingestion complete.")
 
-    # `elif` means "else if". This block runs if `--ingest` was NOT used, but `--analyze` WAS.
-    elif args.analyze:
-        # An f-string (formatted string) is a modern way to embed variables directly inside a string.
-        print(f"[*] Analyzing file: {args.analyze}")
+    elif args.mode == 'analyze':
+        if not args.file:
+            print("Error: The '--file' argument is required for 'analyze' mode.")
+            return
+
+        print(f"[*] Analyzing file: {args.file}")
         
-        # `try...except` is Python's way of handling errors gracefully.
-        # The code inside the `try` block is executed, but if an error occurs, the program jumps to the `except` block instead of crashing.
         try:
-            # `with open(...)` is the recommended way to work with files in Python.
-            # It automatically handles closing the file, even if errors occur.
-            # 'r' means read mode, and `encoding='utf-8'` is important for handling a wide range of text characters.
-            with open(args.analyze, 'r', encoding='utf-8') as f:
-                # `.read()` reads the entire content of the file into the `suspicious_code` variable.
+            with open(args.file, 'r', encoding='utf-8') as f:
                 suspicious_code = f.read()
-        # This block catches the specific error that occurs if the file doesn't exist.
         except FileNotFoundError:
-            print(f"Error: Analysis file not found at {args.analyze}")
-            return # `return` exits the function immediately.
-        # This block catches any other exceptions that might occur during file reading.
+            print(f"Error: Analysis file not found at {args.file}")
+            return
         except Exception as e:
             print(f"Error reading file: {e}")
             return
 
-        # --- Analysis Component Initialization ---
-        # These components are only needed for the analysis workflow, so we initialize them here.
-        
-        # Load the code embedding model from the name specified in our config file.
+        print("[*] Initializing analysis components...")
+        db = VectorDB()
         code_embedder = SentenceTransformer(config.CODE_EMBEDDER_MODEL)
-        # Create an instance of our MalwareSearch class.
-        # It needs the database client and the embedding model to work.
         search_engine = MalwareSearch(client=db.get_client(), code_embedder=code_embedder)
-        # Create an instance of our main analyzer class, giving it the search engine.
         analyzer = ComprehensiveMalwareAnalyzer(search_engine=search_engine)
 
-        # --- Run Analysis ---
-        # Call the main analysis method on the analyzer object, passing in the suspicious code.
         report = analyzer.full_analysis_report(suspicious_code)
 
-        # --- Print Report ---
-        # The following lines print a formatted header for the report.
-        # `"\n"` is a newline character. `"="*60` creates a string of 60 equal signs.
         print("\n" + "="*60)
         print("MALWARE ANALYSIS REPORT")
         print("="*60 + "\n")
-        # Finally, print the report generated by the LLM.
         print(report)
 
-    # The `else` block runs if neither `--ingest` nor `--analyze` were provided.
+    elif args.mode == 'redteam':
+        redteam_chat_session()
+
     else:
-        print("No action specified. Use --ingest to build the database or --analyze <file_path> to analyze code.")
+        print("Invalid mode specified. Use --help for options.")
 
 # --- Script Execution Guard ---
-# This is a very common and important pattern in Python.
-# `__name__` is a special variable that Python sets.
-# When you run a file directly (e.g., `python main.py`), Python sets `__name__` to `"__main__"`.
-# If the file is imported by another script, `__name__` is set to the module's name (e.g., `"main"`).
-# This `if` statement ensures that the `main()` function is called only when the script is executed directly.
 if __name__ == "__main__":
     main()
