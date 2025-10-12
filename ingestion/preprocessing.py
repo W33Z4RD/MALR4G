@@ -116,6 +116,36 @@ def chunk_code_file(file_path: Path) -> List[Dict[str, Any]]:
     # Return the list of chunk dictionaries.
     return chunks
 
+# --- Text File Chunking ---
+
+def chunk_text_file(file_path: Path) -> List[Dict[str, Any]]:
+    """Chunk a single text file into paragraphs."""
+    chunks = []
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        
+        # Split content by double newlines (paragraphs)
+        paragraphs = content.split('\n\n')
+        
+        for i, para in enumerate(paragraphs):
+            if not para.strip():
+                continue
+
+            chunk_text = para.strip()
+            chunks.append({
+                "text": chunk_text,
+                "metadata": {
+                    "file": str(file_path),
+                    "paragraph": i,
+                    "size": len(chunk_text),
+                    "file_hash": hashlib.sha256(content.encode()).hexdigest(),
+                }
+            })
+    except Exception as e:
+        print(f"Error processing text file {file_path}: {e}")
+    return chunks
+
 # --- Binary File Analysis ---
 
 def analyze_binary(file_path: Path) -> Dict[str, Any]:

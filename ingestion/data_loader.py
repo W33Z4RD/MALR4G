@@ -22,7 +22,7 @@ from sentence_transformers import SentenceTransformer
 # Import settings and classes from our other project files.
 import config
 from ingestion.vector_db import VectorDB
-from ingestion.preprocessing import chunk_code_file, analyze_binary
+from ingestion.preprocessing import chunk_code_file, analyze_binary, chunk_text_file
 
 # --- The Ingestion Function ---
 
@@ -39,96 +39,110 @@ def ingest_vx_repository(repo_path: str, db: VectorDB, max_files: int = None):
         print(f"Error: Repository path not found at {repo_path}")
         return # Exit the function if the path is invalid.
 
-    # Load the sentence transformer model specified in the config file.
-    # This will download the model from Hugging Face the first time it's run.
+    # Load the sentence transformer models specified in the config file.
+    print("[*] Loading embedding models...")
     code_embedder = SentenceTransformer(config.CODE_EMBEDDER_MODEL)
+    text_embedder = SentenceTransformer(config.TEXT_EMBEDDER_MODEL)
+    
     # Get the Qdrant client object from our VectorDB instance.
     qdrant_client = db.get_client()
     
-    # Initialize a counter for the number of files processed.
+    # Initialize counters and batch lists.
     file_count = 0
-    # Initialize an empty list to hold the `PointStruct` objects before uploading them in a batch.
     code_points = []
+    text_points = []
 
-    print("Scanning VX-Underground repository...")
+    print(f"[*] Scanning repository at {repo_path}...")
     
     # --- File Processing Loop ---
-    # `repo.rglob('*')` is a powerful method that recursively finds all files and directories under the `repo` path.
-    for file_path in repo.rglob('*'):
-        # Check if the current path is a file, not a directory. If it's a directory, we skip it.
+    all_files = list(repo.rglob('*'))
+    print(f"[*] Found {len(all_files)} total files and directories.")
+
+    for file_path in all_files:
+        # Check if the current path is a file, not a directory.
         if not file_path.is_file():
-            continue # `continue` skips to the next iteration of the loop.
+            continue
         
         # If a `max_files` limit was set, check if we have reached it.
         if max_files and file_count >= max_files:
-            break # `break` exits the loop entirely.
+            print(f"[*] Reached file limit of {max_files}. Stopping ingestion.")
+            break
         
-        # Get the file's extension (e.g., '.py', '.exe') and convert it to lowercase.
+        # Get the file's extension and convert it to lowercase.
         suffix = file_path.suffix.lower()
         
         # --- Logic for Code Files ---
-        # Check if the file extension is in our set of known code extensions from the config.
         if suffix in config.CODE_EXTENSIONS:
-            # Process the code file to split it into smaller chunks.
             chunks = chunk_code_file(file_path)
-            # Loop through each chunk returned by the function.
             for idx, chunk in enumerate(chunks):
-                # Convert the text of the chunk into a vector embedding.
                 embedding = code_embedder.encode(chunk["text"])
-                # Create a `PointStruct` for this chunk.
                 point = PointStruct(
-                    # Generate a deterministic, unique ID for the chunk based on its file path and index.
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{file_path}_{idx}")),
-                    # The vector embedding. `.tolist()` converts the numpy array to a standard Python list.
                     vector=embedding.tolist(),
-                    # The payload contains all the metadata.
-                    # `{**chunk["metadata"], ...}` is a neat way to merge two dictionaries.
                     payload={**chunk["metadata"], "chunk_index": idx, "type": "code"}
                 )
-                # Add the newly created point to our batch list.
                 code_points.append(point)
                 
-                # To avoid using too much memory and to make uploads faster, we upload in batches.
-                if len(code_points) >= 1000:
+                if len(code_points) >= 500:
                     qdrant_client.upsert(collection_name=config.CODE_COLLECTION, points=code_points)
-                    print(f"Inserted {len(code_points)} code chunks")
-                    code_points = [] # Reset the list after uploading.
+                    print(f"[*] Inserted {len(code_points)} code chunks")
+                    code_points = []
             
-            file_count += 1 # Increment the file counter.
-            # The modulo operator `%` gives the remainder of a division. This prints a status update every 100 files.
-            if file_count % 100 == 0:
-                print(f"Processed {file_count} files...")
+            file_count += 1
 
         # --- Logic for Binary Files ---
-        # `elif` checks this condition if the first `if` was false.
-        # We also check `or not suffix` to process files that have no extension, which is common for Linux executables.
         elif suffix in config.BINARY_EXTENSIONS or not suffix:
-            # Analyze the binary file to extract its features (imports, exports, etc.).
             binary_features = analyze_binary(file_path)
-            # Create a descriptive text string from the most important features.
+            if not binary_features["imports"] and not binary_features["exports"]:
+                continue # Skip binaries with no extracted features
+
             feature_text = f"""
             File: {file_path.name}
             Imports: {', '.join(binary_features['imports'][:50])}
             Exports: {', '.join(binary_features['exports'][:20])}
             Suspicious: {', '.join(binary_features['suspicious_characteristics'])}
             """
-            # Create an embedding of this descriptive text, not the binary itself.
             embedding = code_embedder.encode(feature_text)
-            # Create the `PointStruct` for the binary file.
             point = PointStruct(
                 id=str(uuid.uuid5(uuid.NAMESPACE_DNS, str(file_path))),
                 vector=embedding.tolist(),
-                # The payload includes the file path, type, and all the extracted binary features.
                 payload={"file": str(file_path), "type": "binary", **binary_features}
             )
             code_points.append(point)
             file_count += 1
 
+        # --- Logic for Document Files ---
+        elif suffix in config.DOC_EXTENSIONS:
+            if suffix in ['.txt', '.md']:
+                chunks = chunk_text_file(file_path)
+                for idx, chunk in enumerate(chunks):
+                    embedding = text_embedder.encode(chunk["text"])
+                    point = PointStruct(
+                        id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{file_path}_{idx}")),
+                        vector=embedding.tolist(),
+                        payload={**chunk["metadata"], "chunk_index": idx, "type": "document"}
+                    )
+                    text_points.append(point)
+
+                    if len(text_points) >= 500:
+                        qdrant_client.upsert(collection_name=config.TEXT_COLLECTION, points=text_points)
+                        print(f"[*] Inserted {len(text_points)} document chunks")
+                        text_points = []
+                file_count += 1
+            elif suffix == '.pdf':
+                print(f"[!] PDF processing for {file_path} is not yet implemented. Skipping.")
+
+
+        # --- Status Update ---
+        if file_count > 0 and file_count % 100 == 0:
+            print(f"[*] Processed {file_count} files...")
+
     # --- Final Upload ---
-    # After the loop finishes, there might be some points left in the `code_points` list.
-    # This `if` statement checks if the list is not empty and uploads the final batch.
     if code_points:
         qdrant_client.upsert(collection_name=config.CODE_COLLECTION, points=code_points)
-        print(f"Inserted final {len(code_points)} points")
+        print(f"[*] Inserted final {len(code_points)} code points.")
+    if text_points:
+        qdrant_client.upsert(collection_name=config.TEXT_COLLECTION, points=text_points)
+        print(f"[*] Inserted final {len(text_points)} document points.")
     
-    print(f"Ingestion complete! Processed {file_count} files")
+    print(f"\n[+] Ingestion complete! Processed {file_count} files.")
