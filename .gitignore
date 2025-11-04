@@ -75,3 +75,13 @@ analysis_reports/
 reports/
 *.db
 *.sqlite3
+
+
+#Mylocalstuff
+migration_summary.txt
+migrate_db.py
+explore_db.py
+MalwareSourceCode/
+Malware_docs/
+qdrant_storage/
+

@@ -114,7 +114,7 @@ Provide a comprehensive malware analysis based on the code and the similar sampl
         # `requests.post` sends an HTTP POST request to the specified URL.
         # `json=payload` automatically converts our Python dictionary to a JSON string.
         # `timeout=300` will cause the request to fail if it takes longer than 300 seconds.
-        response = requests.post(config.OLLAMA_URL, json=payload, timeout=300)
+        response = requests.post(config.OLLAMA_URL, json=payload, timeout=3000)
         # `raise_for_status()` will raise an error if the HTTP response code indicates a failure (e.g., 404 Not Found, 500 Server Error).
         response.raise_for_status()
         # If the request was successful, we parse the JSON response and return the content of the message.
