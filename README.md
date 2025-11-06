@@ -31,8 +31,8 @@ The project is organized into the following directories:
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/malware-rag-project.git
-cd malware-rag-project
+git clone https://github.com/W33Z4RD/MALR4G.git
+cd MALR4G
 ```
 
 ### 3. Install Dependencies
